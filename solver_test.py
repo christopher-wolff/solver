@@ -43,5 +43,11 @@ def test_convergence_small_game():
     cards = mx.linspace(0, 1, 2)
     bets = mx.linspace(0, 1, 2)
     win_matrix = (cards[:, None] > cards[None, :]).astype(mx.float32)
-    value = compute_ev(p1, p2, cards, bets, win_matrix).item()
+    value = compute_ev(
+        p1_strategy=p1,
+        p2_strategy=p2,
+        cards=cards,
+        bets=bets,
+        win_matrix=win_matrix,
+    ).item()
     assert abs(value - target) <= 0.05

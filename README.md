@@ -12,7 +12,7 @@ It is recommended to run the solver in a virtual environment:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install mlx
+pip install -r requirements.txt
 ```
 
 Run the solver with
@@ -24,3 +24,9 @@ python3 solver.py
 The script prints progress, saves `p1_strategy.json` and `p2_strategy.json` and
 reports the final expected value (EV) for both players along with the average
 bet for each card value.
+
+Run the tests with
+
+```bash
+pytest -q
+```
