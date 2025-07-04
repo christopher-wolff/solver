@@ -261,4 +261,4 @@ def solve(
 
 
 if __name__ == "__main__":
-    solve(num_cards=21, num_bets=11, bet_max=1.0, iterations=10_000)
+    solve(num_cards=21, num_bets=11, bet_max=1.0, iterations=1_000)
