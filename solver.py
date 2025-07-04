@@ -1,4 +1,18 @@
-"""Counterfactual Regret Minimization solver for a simple poker game."""
+"""Counterfactual Regret Minimization solver for a simple poker game.
+
+The game is discretised into a fixed number of card values and bet sizes. On
+each iteration the solver evaluates the utility of every action for both
+players, updates their cumulative regrets and obtains new mixed strategies via
+regret matching. Averaging the strategies over all iterations provides an
+approximation of a Nash equilibrium.
+
+Strategies are stored as probability arrays. Player one uses an array of shape
+``(num_cards, num_bets)`` where each row corresponds to a card value and each
+column gives the probability of choosing the associated bet size (with index 0
+being a check). Player two's strategy has shape ``(num_cards, num_bets - 1, 2)``
+and for every card value and bet it stores the probability of ``fold`` (index
+0) and ``call`` (index 1).
+"""
 
 import json
 import math
