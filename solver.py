@@ -1,11 +1,13 @@
 """Counterfactual Regret Minimization solver for a simple poker game."""
 
 from typing import Tuple
+from tqdm import tqdm
 import json
 import mlx.core as mx
 
 
 def compute_ev(
+    *,
     p1_strategy: mx.array,
     p2_strategy: mx.array,
     cards: mx.array,
@@ -53,7 +55,8 @@ def solve(
     p2_regrets = mx.zeros((num_cards, num_bets - 1, 2))
     p2_strategy_total = mx.zeros_like(p2_regrets)
 
-    for i in range(iterations):
+    progress = tqdm(range(iterations))
+    for i in progress:
         p1_strategy = regret_matching(p1_regrets)
         p2_strategy = regret_matching(p2_regrets)
 
@@ -89,12 +92,28 @@ def solve(
         p2_regrets[:, :, 0] += p2_fold_utilities - p2_expected_utility
 
         if (i + 1) % max(1, iterations // 10) == 0:
-            ev_now = compute_ev(p1_strategy, p2_strategy, cards, bets, win_matrix).item()
-            print(f"Iter {i + 1}/{iterations}, EV={ev_now:.4f}")
+            ev_now = compute_ev(
+                p1_strategy=p1_strategy,
+                p2_strategy=p2_strategy,
+                cards=cards,
+                bets=bets,
+                win_matrix=win_matrix,
+            ).item()
+            nash_distance = float(
+                mx.maximum(p1_regrets, 0).sum() + mx.maximum(p2_regrets, 0).sum()
+            ) / float(i + 1)
+            progress.set_description(f"nash dist {nash_distance:.4f}")
+            progress.set_postfix(ev=f"{ev_now:.4f}")
 
     p1_avg = p1_strategy_total / p1_strategy_total.sum(axis=1, keepdims=True)
     p2_avg = p2_strategy_total / p2_strategy_total.sum(axis=2, keepdims=True)
-    ev_final = compute_ev(p1_avg, p2_avg, cards, bets, win_matrix).item()
+    ev_final = compute_ev(
+        p1_strategy=p1_avg,
+        p2_strategy=p2_avg,
+        cards=cards,
+        bets=bets,
+        win_matrix=win_matrix,
+    ).item()
 
     with open("p1_strategy.json", "w") as f:
         json.dump(
@@ -128,4 +147,4 @@ def solve(
 
 
 if __name__ == "__main__":
-    solve(21, 11, 1.0, 5000)
+    solve(num_cards=21, num_bets=11, bet_max=1.0, iterations=5000)
