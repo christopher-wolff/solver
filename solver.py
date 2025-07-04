@@ -68,10 +68,9 @@ def compute_ev(
             - (1 - win_matrix[None, :, :]) * bets[:, None, None]
         )
 
-    for bet_idx in range(1, len(bets)):
-        call_prob = p2_strategy[:, bet_idx - 1, 1]
-        payoff = (1 - call_prob)[None, :] + call_prob[None, :] * payoff_if_call[bet_idx]
-        total += mx.sum(p1_strategy[:, bet_idx][:, None] * payoff)
+    call_prob = p2_strategy[:, :, 1].T  # (num_bets-1, num_cards)
+    payoff = (1 - call_prob[:, None, :]) + call_prob[:, None, :] * payoff_if_call[1:]
+    total += mx.einsum("bx,bxy->", p1_strategy[:, 1:].T, payoff)
 
     return total / (n_cards * n_cards)
 
@@ -94,10 +93,9 @@ def _player_one_action_utilities(
     num_bets = payoff_if_call.shape[0]
     utilities = mx.zeros((num_cards, num_bets))
     utilities[:, 0] = win_means
-    for bet_idx in range(1, num_bets):
-        call_prob = p2_strategy[:, bet_idx - 1, 1]
-        payoff = (1 - call_prob)[None, :] + call_prob[None, :] * payoff_if_call[bet_idx]
-        utilities[:, bet_idx] = payoff.mean(axis=1)
+    call_prob = p2_strategy[:, :, 1].T  # (num_bets-1, num_cards)
+    payoff = (1 - call_prob[:, None, :]) + call_prob[:, None, :] * payoff_if_call[1:]
+    utilities[:, 1:] = payoff.mean(axis=2).T
     return utilities
 
 
@@ -107,15 +105,11 @@ def _player_two_action_utilities(
     """Return utilities for P2's call and fold actions."""
 
     num_cards, num_bets = p1_strategy.shape
-    call_utilities = mx.zeros((num_cards, num_bets - 1))
-    fold_utilities = mx.zeros((num_cards, num_bets - 1))
-    for bet_idx in range(1, num_bets):
-        p1_prob = p1_strategy[:, bet_idx]
-        payoff_p2_call = -payoff_if_call[bet_idx]
-        call_utilities[:, bet_idx - 1] = (p1_prob[:, None] * payoff_p2_call).sum(
-            axis=0
-        ) / num_cards
-        fold_utilities[:, bet_idx - 1] = -p1_prob.sum() / num_cards
+    p1_probs = p1_strategy[:, 1:]
+    payoff_p2_call = -payoff_if_call[1:]
+    call_utilities = mx.einsum("ib,bij->jb", p1_probs, payoff_p2_call) / num_cards
+    fold_scalar = -p1_probs.sum(axis=0) / num_cards
+    fold_utilities = mx.broadcast_to(fold_scalar[None, :], (num_cards, num_bets - 1))
     return call_utilities, fold_utilities
 
 
