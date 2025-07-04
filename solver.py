@@ -36,8 +36,10 @@ class GameTables:
 def _build_game(num_cards: int, num_bets: int, bet_max: float) -> GameTables:
     """Return lookup tables for a discretised game."""
 
-    cards = mx.linspace(0, 1, num_cards)
-    bets = bet_max * mx.linspace(0, 1, num_bets)
+    cards = mx.linspace(0, 1, num_cards, dtype=mx.float32)
+    bets = mx.array(bet_max, dtype=mx.float32) * mx.linspace(
+        0, 1, num_bets, dtype=mx.float32
+    )
     win_matrix = (cards[:, None] > cards[None, :]).astype(mx.float32)
     win_means = win_matrix.mean(axis=1)
     payoff_if_call = (
