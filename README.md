@@ -5,6 +5,16 @@ This repository contains a simple [0,1] poker solver implemented using Apple's
 values and bet sizes, runs gradient-based training to approximate a Nash
 equilibrium and serialises the resulting strategies to JSON.
 
+## Setup
+
+It is recommended to run the solver in a virtual environment:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install mlx
+```
+
 Run the solver with
 
 ```bash
