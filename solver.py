@@ -1,8 +1,9 @@
 """Counterfactual Regret Minimization solver for a simple poker game."""
 
-from typing import Tuple
-from tqdm import tqdm
 import json
+import math
+
+from tqdm import tqdm
 import mlx.core as mx
 
 
@@ -43,7 +44,7 @@ def solve(
     num_bets: int,
     bet_max: float,
     iterations: int,
-) -> Tuple[mx.array, mx.array]:
+) -> tuple[mx.array, mx.array]:
     """Run CFR for the discretised game and return average strategies."""
     cards = mx.linspace(0, 1, num_cards)
     bets = bet_max * mx.linspace(0, 1, num_bets)
@@ -55,9 +56,7 @@ def solve(
     p2_regrets = mx.zeros((num_cards, num_bets - 1, 2))
     p2_strategy_total = mx.zeros_like(p2_regrets)
 
-    initial_distance = float(
-        mx.maximum(p1_regrets, 0).sum() + mx.maximum(p2_regrets, 0).sum()
-    )
+    initial_distance = math.inf
     progress = tqdm(range(iterations), desc=f"\u0394N {initial_distance:.4f}")
     for i in progress:
         p1_strategy = regret_matching(p1_regrets)
@@ -74,7 +73,9 @@ def solve(
             payoff_if_call = win_matrix * (1 + bet_size) - (1 - win_matrix) * bet_size
             payoff = (1 - call_prob)[None, :] + call_prob[None, :] * payoff_if_call
             p1_action_utilities[:, bet_idx] = payoff.mean(axis=1)
-        p1_expected_utility = (p1_strategy * p1_action_utilities).sum(axis=1, keepdims=True)
+        p1_expected_utility = (p1_strategy * p1_action_utilities).sum(
+            axis=1, keepdims=True
+        )
         p1_regrets += p1_action_utilities - p1_expected_utility
 
         # utilities for P2 actions
@@ -85,7 +86,9 @@ def solve(
             p1_prob = p1_strategy[:, bet_idx]
             payoff_if_call = win_matrix * (1 + bet_size) - (1 - win_matrix) * bet_size
             payoff_p2_call = -payoff_if_call
-            p2_call_utilities[:, bet_idx - 1] = (p1_prob[:, None] * payoff_p2_call).sum(axis=0) / num_cards
+            p2_call_utilities[:, bet_idx - 1] = (p1_prob[:, None] * payoff_p2_call).sum(
+                axis=0
+            ) / num_cards
             p2_fold_utilities[:, bet_idx - 1] = -p1_prob.sum() / num_cards
         p2_expected_utility = (
             p2_strategy[:, :, 1] * p2_call_utilities
@@ -150,4 +153,4 @@ def solve(
 
 
 if __name__ == "__main__":
-    solve(num_cards=21, num_bets=11, bet_max=1.0, iterations=5000)
+    solve(num_cards=21, num_bets=11, bet_max=1.0, iterations=10_000)
