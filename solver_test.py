@@ -4,6 +4,11 @@ import mlx.core as mx
 
 from solver import solve, compute_ev
 
+try:
+    mx.set_default_device(mx.Device("cpu"))
+except TypeError:
+    mx.set_default_device(mx.Device(mx.cpu))
+
 
 def analytic_solution_value() -> float:
     """Return the Nash value for the simple two-card game."""
