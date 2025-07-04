@@ -55,7 +55,10 @@ def solve(
     p2_regrets = mx.zeros((num_cards, num_bets - 1, 2))
     p2_strategy_total = mx.zeros_like(p2_regrets)
 
-    progress = tqdm(range(iterations))
+    initial_distance = float(
+        mx.maximum(p1_regrets, 0).sum() + mx.maximum(p2_regrets, 0).sum()
+    )
+    progress = tqdm(range(iterations), desc=f"\u0394N {initial_distance:.4f}")
     for i in progress:
         p1_strategy = regret_matching(p1_regrets)
         p2_strategy = regret_matching(p2_regrets)
