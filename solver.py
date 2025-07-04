@@ -14,17 +14,22 @@ def compute_ev(
     cards: mx.array,
     bets: mx.array,
     win_matrix: mx.array,
+    payoff_if_call: mx.array | None = None,
 ) -> mx.array:
     """Return the expected value for player 1 given the strategies."""
 
     n_cards = len(cards)
     total = mx.sum(p1_strategy[:, 0][:, None] * win_matrix)
 
+    if payoff_if_call is None:
+        payoff_if_call = (
+            win_matrix[None, :, :] * (1 + bets[:, None, None])
+            - (1 - win_matrix[None, :, :]) * bets[:, None, None]
+        )
+
     for bet_idx in range(1, len(bets)):
-        bet_size = bets[bet_idx]
         call_prob = p2_strategy[:, bet_idx - 1, 1]
-        payoff_if_call = win_matrix * (1 + bet_size) - (1 - win_matrix) * bet_size
-        payoff = (1 - call_prob)[None, :] + call_prob[None, :] * payoff_if_call
+        payoff = (1 - call_prob)[None, :] + call_prob[None, :] * payoff_if_call[bet_idx]
         total += mx.sum(p1_strategy[:, bet_idx][:, None] * payoff)
 
     return total / (n_cards * n_cards)
@@ -49,6 +54,11 @@ def solve(
     cards = mx.linspace(0, 1, num_cards)
     bets = bet_max * mx.linspace(0, 1, num_bets)
     win_matrix = (cards[:, None] > cards[None, :]).astype(mx.float32)
+    win_means = win_matrix.mean(axis=1)
+    payoff_if_call = (
+        win_matrix[None, :, :] * (1 + bets[:, None, None])
+        - (1 - win_matrix[None, :, :]) * bets[:, None, None]
+    )
 
     p1_regrets = mx.zeros((num_cards, num_bets))
     p1_strategy_total = mx.zeros_like(p1_regrets)
@@ -66,12 +76,10 @@ def solve(
         p2_strategy_total += p2_strategy
 
         p1_action_utilities = mx.zeros_like(p1_regrets)
-        p1_action_utilities[:, 0] = win_matrix.mean(axis=1)
+        p1_action_utilities[:, 0] = win_means
         for bet_idx in range(1, num_bets):
-            bet_size = bets[bet_idx]
             call_prob = p2_strategy[:, bet_idx - 1, 1]
-            payoff_if_call = win_matrix * (1 + bet_size) - (1 - win_matrix) * bet_size
-            payoff = (1 - call_prob)[None, :] + call_prob[None, :] * payoff_if_call
+            payoff = (1 - call_prob)[None, :] + call_prob[None, :] * payoff_if_call[bet_idx]
             p1_action_utilities[:, bet_idx] = payoff.mean(axis=1)
         p1_expected_utility = (p1_strategy * p1_action_utilities).sum(
             axis=1, keepdims=True
@@ -82,10 +90,8 @@ def solve(
         p2_call_utilities = mx.zeros((num_cards, num_bets - 1))
         p2_fold_utilities = mx.zeros((num_cards, num_bets - 1))
         for bet_idx in range(1, num_bets):
-            bet_size = bets[bet_idx]
             p1_prob = p1_strategy[:, bet_idx]
-            payoff_if_call = win_matrix * (1 + bet_size) - (1 - win_matrix) * bet_size
-            payoff_p2_call = -payoff_if_call
+            payoff_p2_call = -payoff_if_call[bet_idx]
             p2_call_utilities[:, bet_idx - 1] = (p1_prob[:, None] * payoff_p2_call).sum(
                 axis=0
             ) / num_cards
@@ -97,6 +103,9 @@ def solve(
         p2_regrets[:, :, 1] += p2_call_utilities - p2_expected_utility
         p2_regrets[:, :, 0] += p2_fold_utilities - p2_expected_utility
 
+        mx.eval(p1_regrets, p2_regrets, p1_strategy_total, p2_strategy_total)
+        mx.clear_cache()
+
         if (i + 1) % max(1, iterations // 10) == 0:
             ev_now = compute_ev(
                 p1_strategy=p1_strategy,
@@ -104,6 +113,7 @@ def solve(
                 cards=cards,
                 bets=bets,
                 win_matrix=win_matrix,
+                payoff_if_call=payoff_if_call,
             ).item()
             nash_distance = float(
                 mx.maximum(p1_regrets, 0).sum() + mx.maximum(p2_regrets, 0).sum()
@@ -119,6 +129,7 @@ def solve(
         cards=cards,
         bets=bets,
         win_matrix=win_matrix,
+        payoff_if_call=payoff_if_call,
     ).item()
 
     with open("p1_strategy.json", "w") as f:
