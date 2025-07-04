@@ -1,6 +1,8 @@
+"""Counterfactual Regret Minimization solver for a simple poker game."""
+
+from typing import Tuple
 import json
 import mlx.core as mx
-from typing import Tuple
 
 
 def compute_ev(
@@ -8,25 +10,30 @@ def compute_ev(
     p2_strategy: mx.array,
     cards: mx.array,
     bets: mx.array,
-    card_win: mx.array,
+    win_matrix: mx.array,
 ) -> mx.array:
-    """Return P1 EV for given strategies."""
+    """Return the expected value for player 1 given the strategies."""
 
     n_cards = len(cards)
-    total = mx.array(0.0)
+    total = mx.sum(p1_strategy[:, 0][:, None] * win_matrix)
 
-    # check action (bet 0) has no response from P2
-    payoff_check = card_win
-    total += mx.sum(p1_strategy[:, 0][:, None] * payoff_check) / (n_cards * n_cards)
+    for bet_idx in range(1, len(bets)):
+        bet_size = bets[bet_idx]
+        call_prob = p2_strategy[:, bet_idx - 1, 1]
+        payoff_if_call = win_matrix * (1 + bet_size) - (1 - win_matrix) * bet_size
+        payoff = (1 - call_prob)[None, :] + call_prob[None, :] * payoff_if_call
+        total += mx.sum(p1_strategy[:, bet_idx][:, None] * payoff)
 
-    # positive bets have a P2 response
-    for j in range(1, len(bets)):
-        bet = bets[j]
-        call_prob = p2_strategy[:, j - 1, 1]
-        payoff_if_call = card_win * (1 + bet) - (1 - card_win) * bet
-        payoff_j = (1 - call_prob)[None, :] * 1 + call_prob[None, :] * payoff_if_call
-        total += mx.sum(p1_strategy[:, j][:, None] * payoff_j) / (n_cards * n_cards)
-    return total
+    return total / (n_cards * n_cards)
+
+
+def regret_matching(regrets: mx.array) -> mx.array:
+    """Return a probability distribution proportional to positive regrets."""
+    positive = mx.maximum(regrets, 0)
+    total = positive.sum(axis=-1, keepdims=True)
+    num_actions = regrets.shape[-1]
+    uniform = mx.ones_like(positive) / num_actions
+    return mx.where(total > 0, positive / total, uniform)
 
 
 def solve(
@@ -35,64 +42,59 @@ def solve(
     bet_max: float,
     iterations: int,
 ) -> Tuple[mx.array, mx.array]:
+    """Run CFR for the discretised game and return average strategies."""
     cards = mx.linspace(0, 1, num_cards)
     bets = bet_max * mx.linspace(0, 1, num_bets)
-    card_win = (cards[:, None] > cards[None, :]).astype(mx.float32)
+    win_matrix = (cards[:, None] > cards[None, :]).astype(mx.float32)
 
-    # strategies and regret buffers
-    p1_regret = mx.zeros((num_cards, num_bets))
-    p1_strategy_sum = mx.zeros_like(p1_regret)
+    p1_regrets = mx.zeros((num_cards, num_bets))
+    p1_strategy_total = mx.zeros_like(p1_regrets)
 
-    p2_regret = mx.zeros((num_cards, num_bets - 1, 2))
-    p2_strategy_sum = mx.zeros_like(p2_regret)
-
-    def regret_matching(regrets: mx.array) -> mx.array:
-        pos = mx.maximum(regrets, 0)
-        total = pos.sum(axis=-1, keepdims=True)
-        num_actions = regrets.shape[-1]
-        uniform = mx.ones_like(pos) * (1.0 / num_actions)
-        return mx.where(total > 0, pos / total, uniform)
+    p2_regrets = mx.zeros((num_cards, num_bets - 1, 2))
+    p2_strategy_total = mx.zeros_like(p2_regrets)
 
     for i in range(iterations):
-        p1_strategy = regret_matching(p1_regret)
-        p2_strategy = regret_matching(p2_regret)
+        p1_strategy = regret_matching(p1_regrets)
+        p2_strategy = regret_matching(p2_regrets)
 
-        p1_strategy_sum += p1_strategy
-        p2_strategy_sum += p2_strategy
+        p1_strategy_total += p1_strategy
+        p2_strategy_total += p2_strategy
 
-        # utilities for P1 actions
-        util1_actions = mx.zeros_like(p1_regret)
-        util1_actions[:, 0] = card_win.mean(axis=1)
-        for j in range(1, num_bets):
-            bet = bets[j]
-            call_prob = p2_strategy[:, j - 1, 1]
-            payoff_if_call = card_win * (1 + bet) - (1 - card_win) * bet
-            payoff = (1 - call_prob)[None, :] * 1 + call_prob[None, :] * payoff_if_call
-            util1_actions[:, j] = payoff.mean(axis=1)
-        util1 = (p1_strategy * util1_actions).sum(axis=1, keepdims=True)
-        p1_regret += util1_actions - util1
+        p1_action_utilities = mx.zeros_like(p1_regrets)
+        p1_action_utilities[:, 0] = win_matrix.mean(axis=1)
+        for bet_idx in range(1, num_bets):
+            bet_size = bets[bet_idx]
+            call_prob = p2_strategy[:, bet_idx - 1, 1]
+            payoff_if_call = win_matrix * (1 + bet_size) - (1 - win_matrix) * bet_size
+            payoff = (1 - call_prob)[None, :] + call_prob[None, :] * payoff_if_call
+            p1_action_utilities[:, bet_idx] = payoff.mean(axis=1)
+        p1_expected_utility = (p1_strategy * p1_action_utilities).sum(axis=1, keepdims=True)
+        p1_regrets += p1_action_utilities - p1_expected_utility
 
         # utilities for P2 actions
-        util2_call = mx.zeros((num_cards, num_bets - 1))
-        util2_fold = mx.zeros((num_cards, num_bets - 1))
-        for j in range(1, num_bets):
-            bet = bets[j]
-            p1_prob_j = p1_strategy[:, j]
-            payoff_if_call = card_win * (1 + bet) - (1 - card_win) * bet
+        p2_call_utilities = mx.zeros((num_cards, num_bets - 1))
+        p2_fold_utilities = mx.zeros((num_cards, num_bets - 1))
+        for bet_idx in range(1, num_bets):
+            bet_size = bets[bet_idx]
+            p1_prob = p1_strategy[:, bet_idx]
+            payoff_if_call = win_matrix * (1 + bet_size) - (1 - win_matrix) * bet_size
             payoff_p2_call = -payoff_if_call
-            util2_call[:, j - 1] = (p1_prob_j[:, None] * payoff_p2_call).sum(axis=0) / num_cards
-            util2_fold[:, j - 1] = -p1_prob_j.sum() / num_cards
-        util2 = p2_strategy[:, :, 1] * util2_call + p2_strategy[:, :, 0] * util2_fold
-        p2_regret[:, :, 1] += util2_call - util2
-        p2_regret[:, :, 0] += util2_fold - util2
+            p2_call_utilities[:, bet_idx - 1] = (p1_prob[:, None] * payoff_p2_call).sum(axis=0) / num_cards
+            p2_fold_utilities[:, bet_idx - 1] = -p1_prob.sum() / num_cards
+        p2_expected_utility = (
+            p2_strategy[:, :, 1] * p2_call_utilities
+            + p2_strategy[:, :, 0] * p2_fold_utilities
+        )
+        p2_regrets[:, :, 1] += p2_call_utilities - p2_expected_utility
+        p2_regrets[:, :, 0] += p2_fold_utilities - p2_expected_utility
 
         if (i + 1) % max(1, iterations // 10) == 0:
-            ev_now = compute_ev(p1_strategy, p2_strategy, cards, bets, card_win).item()
+            ev_now = compute_ev(p1_strategy, p2_strategy, cards, bets, win_matrix).item()
             print(f"Iter {i + 1}/{iterations}, EV={ev_now:.4f}")
 
-    p1_avg = p1_strategy_sum / p1_strategy_sum.sum(axis=1, keepdims=True)
-    p2_avg = p2_strategy_sum / p2_strategy_sum.sum(axis=2, keepdims=True)
-    ev_final = compute_ev(p1_avg, p2_avg, cards, bets, card_win).item()
+    p1_avg = p1_strategy_total / p1_strategy_total.sum(axis=1, keepdims=True)
+    p2_avg = p2_strategy_total / p2_strategy_total.sum(axis=2, keepdims=True)
+    ev_final = compute_ev(p1_avg, p2_avg, cards, bets, win_matrix).item()
 
     with open("p1_strategy.json", "w") as f:
         json.dump(
