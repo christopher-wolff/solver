@@ -16,10 +16,19 @@ and for every card value and bet it stores the probability of ``fold`` (index
 
 import json
 import math
+import argparse
 from dataclasses import dataclass
 
 from tqdm import tqdm
 import mlx.core as mx
+
+
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--device",
+    choices=["cpu", "gpu"],
+    help="Run computations on the selected device",
+)
 
 
 @dataclass
@@ -261,4 +270,11 @@ def solve(
 
 
 if __name__ == "__main__":
+    args = parser.parse_args()
+    if args.device:
+        try:
+            mx.set_default_device(mx.Device(args.device))
+        except TypeError:
+            mapping = {"cpu": mx.cpu, "gpu": mx.gpu}
+            mx.set_default_device(mx.Device(mapping[args.device]))
     solve(num_cards=21, num_bets=11, bet_max=1.0, iterations=1_000)
