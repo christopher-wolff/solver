@@ -112,9 +112,9 @@ def _player_two_action_utilities(
     for bet_idx in range(1, num_bets):
         p1_prob = p1_strategy[:, bet_idx]
         payoff_p2_call = -payoff_if_call[bet_idx]
-        call_utilities[:, bet_idx - 1] = (
-            (p1_prob[:, None] * payoff_p2_call).sum(axis=0) / num_cards
-        )
+        call_utilities[:, bet_idx - 1] = (p1_prob[:, None] * payoff_p2_call).sum(
+            axis=0
+        ) / num_cards
         fold_utilities[:, bet_idx - 1] = -p1_prob.sum() / num_cards
     return call_utilities, fold_utilities
 
