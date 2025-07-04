@@ -102,7 +102,7 @@ def solve(
             nash_distance = float(
                 mx.maximum(p1_regrets, 0).sum() + mx.maximum(p2_regrets, 0).sum()
             ) / float(i + 1)
-            progress.set_description(f"nash dist {nash_distance:.4f}")
+            progress.set_description(f"ΔN {nash_distance:.4f}")
             progress.set_postfix(ev=f"{ev_now:.4f}")
 
     p1_avg = p1_strategy_total / p1_strategy_total.sum(axis=1, keepdims=True)
